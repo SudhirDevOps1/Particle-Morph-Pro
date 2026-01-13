@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Particle Morph - Hand Skeleton</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Inter', sans-serif; }
+        canvas { display: block; }
+        
+        .ui-card {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+        }
+
+        .search-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .search-box:focus-within {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.02);
+        }
+
+        .btn-tab {
+            transition: all 0.3s ease;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .btn-tab.active {
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: inset 0 0 10px rgba(255,255,255,0.1);
+        }
+
+        #boom-flash {
+            position: fixed;
+            inset: 0;
+            background: white;
+            pointer-events: none;
+            opacity: 0;
+            z-index: 5;
+            transition: opacity 0.1s ease-out;
+        }
+
+        .boom-wave {
+            position: fixed;
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 4;
+            animation: boomWave 0.8s ease-out forwards;
+        }
+
+        @keyframes boomWave {
+            0% { width: 0; height: 0; opacity: 1; transform: translate(-50%, -50%); }
+            100% { width: 600px; height: 600px; opacity: 0; transform: translate(-50%, -50%) scale(2); }
+        }
+
+        .mirror { transform: scaleX(-1); }
+        
+        .hand-indicator {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 99;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s, border-color 0.2s;
+        }
+        .hand-indicator::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+        }
+        .hand-indicator.active {
+            opacity: 1;
+        }
+
+        .pinch-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #ff2d55;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            box-shadow: 0 0 30px #ff2d55, 0 0 60px #ff2d55;
+            transition: opacity 0.2s;
+        }
+
+        /* Help Modal Styles */
+        .help-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .help-modal.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .help-modal-bg {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+        }
+        .help-modal-content {
+            position: relative;
+            max-width: 650px;
+            max-height: 85vh;
+            overflow-y: auto;
+            margin: 20px;
+            background: linear-gradient(135deg, rgba(30,30,40,0.95), rgba(20,20,30,0.98));
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.8);
+            animation: modalSlideIn 0.4s ease;
+        }
+        @keyframes modalSlideIn {
+            from { transform: translateY(30px) scale(0.95); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .help-modal-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        .help-modal-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+
+        .help-btn {
+            background: linear-gradient(135deg, #ff2d55, #ff6b35);
+            transition: all 0.3s ease;
+        }
+        .help-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 25px rgba(255,45,85,0.4);
+        }
+
+        .instruction-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.3s ease;
+        }
+        .instruction-card:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.2);
+            transform: translateX(5px);
+        }
+
+        /* Settings Panel */
+        .settings-panel {
+            position: fixed;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 50;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .settings-panel.collapsed {
+            transform: translateY(-50%) translateX(-100%);
+        }
+        .settings-panel.collapsed .settings-toggle {
+            transform: translateX(100%);
+        }
+
+        .settings-toggle {
+            position: absolute;
+            right: -40px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 50px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-left: none;
+            border-radius: 0 12px 12px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .settings-toggle:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .settings-content {
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 0 20px 20px 0;
+            padding: 20px;
+            min-width: 220px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .settings-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .settings-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+
+        .slider-container {
+            margin-bottom: 16px;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.15);
+            outline: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff2d55, #ff6b35);
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255,45,85,0.6);
+            transition: transform 0.2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Shape tabs scrollbar */
+        .shape-tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+        .shape-tabs::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s;
+            flex-shrink: 0;
+        }
+        .toggle-switch.active {
+            background: linear-gradient(135deg, #ff2d55, #ff6b35);
+        }
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s;
+        }
+        .toggle-switch.active::after {
+            transform: translateX(24px);
+        }
+
+        /* Action Buttons */
+        .action-btn {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 12px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .action-btn:hover {
+            background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.1));
+            transform: scale(1.05);
+        }
+        .action-btn.boom-btn {
+            background: linear-gradient(135deg, #ff2d55, #ff6b35);
+        }
+        .action-btn.boom-btn:hover {
+            box-shadow: 0 5px 25px rgba(255,45,85,0.5);
+        }
+        .action-btn.default-btn {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        }
+        .action-btn.default-btn:hover {
+            box-shadow: 0 5px 25px rgba(59,130,246,0.5);
+        }
+
+        /* Rainbow Animation */
+        @keyframes rainbow {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+
+        /* Gesture Visual Feedback */
+        .gesture-visual {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 12px 24px;
+            z-index: 60;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .gesture-visual.show {
+            opacity: 1;
+        }
+
+        /* Rotate Animation */
+        @keyframes spin360 {
+            from { transform: rotateY(0deg); }
+            to { transform: rotateY(360deg); }
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .settings-panel {
+                left: 0;
+                top: auto;
+                bottom: 0;
+                transform: translateY(0);
+                width: 100%;
+            }
+            .settings-panel.collapsed {
+                transform: translateY(100%);
+            }
+            .settings-toggle {
+                right: auto;
+                left: 50%;
+                top: -40px;
+                bottom: auto;
+                transform: translateX(-50%);
+                width: 50px;
+                height: 30px;
+                border-radius: 12px 12px 0 0;
+                border: 1px solid rgba(255,255,255,0.1);
+                border-bottom: none;
+            }
+            .settings-panel.collapsed .settings-toggle {
+                transform: translateX(-50%) translateY(-100%);
+                top: auto;
+                bottom: 0;
+            }
+            .settings-content {
+                border-radius: 20px 20px 0 0;
+                padding: 15px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                max-height: 50vh;
+            }
+            .slider-container {
+                flex: 1 1 45%;
+                min-width: 120px;
+                margin-bottom: 0;
+            }
+            .mobile-actions {
+                display: flex;
+                gap: 10px;
+                width: 100%;
+            }
+            .toggle-row {
+                width: 100%;
+            }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-actions {
+                display: none;
+            }
+        }
+
+        /* Gesture Badge */
+        .gesture-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .gesture-badge.peace { background: linear-gradient(135deg, #ff2d55, #ff6b35); }
+        .gesture-badge.three { background: linear-gradient(135deg, #3b82f6, #8b5cf6); }
+        .gesture-badge.fist { background: linear-gradient(135deg, #22c55e, #10b981); }
+    </style>
+</head>
+<body>
+
+    <div id="boom-flash"></div>
+
+    <!-- Gesture Visual Feedback -->
+    <div id="gesture-visual" class="gesture-visual">
+        <span id="gesture-text" class="text-white text-sm font-bold">✌️ BOOM!</span>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="help-modal">
+        <div class="help-modal-bg" onclick="toggleHelp()"></div>
+        <div class="help-modal-content">
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-orange-500 flex items-center justify-center">
+                        <i data-lucide="sparkles" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-white text-xl font-black">Kaise Use Karein? 🎮</h2>
+                        <p class="text-gray-400 text-xs">Complete Guide - Hand Gestures</p>
+                    </div>
+                </div>
+                <button onclick="toggleHelp()" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+
+            <div class="instruction-card border-l-4 border-l-cyan-500">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">✋</span>
+                    <h3 class="text-white font-bold">Hand Tracking + Skeleton</h3>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    Camera ke saamne haath dikhaao - <span class="text-cyan-400 font-bold">colorful lines</span> tumhare fingers pe dikhenge! 
+                    <br><span class="text-green-400">🟢 Green = Thumb</span> | <span class="text-red-400">🔴 Red = Index</span> | <span class="text-yellow-400">🟡 Others</span>
+                </p>
+            </div>
+
+            <div class="instruction-card border-l-4 border-l-pink-500">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">✌️</span>
+                    <h3 class="text-white font-bold">2 Fingers = BOOM! 💥</h3>
+                    <span class="gesture-badge peace text-white">NEW!</span>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    <span class="text-pink-400 font-bold">Victory/Peace sign</span> dikhao (do ungli khadi) - particles BOOM karke explode honge! 
+                    <br><span class="text-gray-400 text-xs">Index + Middle finger extended, baaki band.</span>
+                </p>
+            </div>
+
+            <div class="instruction-card border-l-4 border-l-purple-500">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">🤟</span>
+                    <h3 class="text-white font-bold">3 Fingers = 360° Rotate 🔄</h3>
+                    <span class="gesture-badge three text-white">NEW!</span>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    <span class="text-purple-400 font-bold">Teen ungli</span> dikhao - particles 360 degree rotate karenge! 
+                    <br><span class="text-gray-400 text-xs">Index + Middle + Ring finger extended.</span>
+                </p>
+            </div>
+
+            <div class="instruction-card border-l-4 border-l-green-500">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">✊</span>
+                    <h3 class="text-white font-bold">Fist = Particles Chhote</h3>
+                    <span class="gesture-badge fist text-white">CONTROL</span>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    <span class="text-green-400 font-bold">Haath band karo</span> (mutthi) - particles shrink honge.
+                    <br><span class="text-yellow-400 font-bold">Haath kholo</span> - particles bade honge!
+                </p>
+            </div>
+
+            <div class="instruction-card">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">👆</span>
+                    <h3 class="text-white font-bold">1 Finger = Pointer Mode</h3>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    Sirf <span class="text-cyan-400 font-bold">ek ungli</span> dikhao - precise control milega particles pe!
+                </p>
+            </div>
+
+            <div class="instruction-card">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">⭐</span>
+                    <h3 class="text-white font-bold">Shapes Change Karo</h3>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    Neeche wale <span class="text-green-400 font-bold">buttons</span> pe click karke shapes change karo - Flower, Heart, Star, DNA, Galaxy aur bahut kuch!
+                </p>
+            </div>
+
+            <div class="instruction-card">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">⚙️</span>
+                    <h3 class="text-white font-bold">Settings Panel</h3>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    Left side mein Settings icon pe click karo:
+                    <br>• <span class="text-orange-400">Particle Size, Speed, Trail</span> control karo
+                    <br>• <span class="text-blue-400">Default button</span> se sab reset!
+                    <br>• <span class="text-pink-400">BOOM button</span> manually trigger karo
+                </p>
+            </div>
+
+            <div class="instruction-card">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-2xl">⌨️</span>
+                    <h3 class="text-white font-bold">Keyboard Shortcuts</h3>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed">
+                    <span class="text-cyan-400 font-bold">Space</span> = BOOM | <span class="text-cyan-400 font-bold">R</span> = Random Shape | <span class="text-cyan-400 font-bold">D</span> = Default Reset
+                </p>
+            </div>
+
+            <div class="mt-6 p-4 rounded-2xl bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-pink-500/30">
+                <p class="text-white text-sm text-center font-medium">
+                    💡 <span class="text-pink-300">Pro Tip:</span> Camera preview mein apne haath ki <span class="text-cyan-300">skeleton lines</span> dekho - tracking smooth hai ya nahi check karo!
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div class="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-4 md:p-6">
+        <div class="flex justify-between items-start gap-2">
+            <div class="flex flex-col gap-3 pointer-events-auto">
+                <div class="ui-card rounded-2xl p-3 md:p-4 flex items-center gap-3">
+                    <div id="status-light" class="w-3 h-3 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_#ef4444]"></div>
+                    <div>
+                        <h1 class="text-white text-[10px] md:text-xs font-black tracking-widest uppercase">Particle Morph Pro</h1>
+                        <p id="hint-text" class="text-[9px] md:text-[10px] text-gray-400">Initializing AI Vision...</p>
+                    </div>
+                </div>
+
+                <div class="search-box rounded-xl px-3 py-2 md:px-4 md:py-3 flex items-center gap-2 w-56 md:w-72">
+                    <i data-lucide="search" class="text-gray-500 w-4 h-4"></i>
+                    <input type="text" id="morph-input" placeholder="Type to transform..." 
+                           class="bg-transparent text-white outline-none w-full text-xs md:text-sm font-medium">
+                </div>
+
+                <!-- Help Button -->
+                <button onclick="toggleHelp()" class="help-btn rounded-xl px-4 py-2 md:px-5 md:py-3 flex items-center gap-2 text-white font-bold shadow-lg">
+                    <i data-lucide="help-circle" class="w-4 h-4 md:w-5 md:h-5"></i>
+                    <span class="text-xs md:text-sm">Kaise Use Karein?</span>
+                </button>
+            </div>
+
+            <!-- Color Palette -->
+            <div class="ui-card rounded-2xl p-2 flex flex-wrap gap-1.5 md:gap-2 pointer-events-auto max-w-[120px] md:max-w-[200px]">
+                <button onclick="engine.changeColor('#ff2d55')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-[#ff2d55] border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.changeColor('#00f2ff')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-[#00f2ff] border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.changeColor('#ffcc00')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-[#ffcc00] border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.changeColor('#ffffff')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-white border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.changeColor('#22c55e')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-[#22c55e] border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.changeColor('#a855f7')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-[#a855f7] border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.changeColor('#f97316')" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-[#f97316] border-2 border-white/10 hover:scale-110 transition-transform"></button>
+                <button onclick="engine.toggleRainbow()" id="rainbow-btn" class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 border-2 border-white/10 hover:scale-110 transition-transform" title="Rainbow Mode"></button>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div id="settings-panel" class="settings-panel pointer-events-auto">
+            <div class="settings-toggle" onclick="toggleSettings()">
+                <i data-lucide="settings" class="w-5 h-5 text-white"></i>
+            </div>
+            <div class="settings-content">
+                <h3 class="text-white text-xs font-black uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-4 h-4"></i>
+                    Controls
+                </h3>
+                
+                <div class="slider-container">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider mb-2 block">Particle Size</label>
+                    <input type="range" id="size-slider" min="0.1" max="2" step="0.1" value="0.4" oninput="engine.setParticleSize(this.value)">
+                    <span id="size-value" class="text-gray-400 text-[10px] block mt-1">0.4</span>
+                </div>
+                
+                <div class="slider-container">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider mb-2 block">Animation Speed</label>
+                    <input type="range" id="speed-slider" min="0.01" max="0.15" step="0.01" value="0.05" oninput="engine.setSpeed(this.value)">
+                    <span id="speed-value" class="text-gray-400 text-[10px] block mt-1">0.05</span>
+                </div>
+                
+                <div class="slider-container">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider mb-2 block">Trail Effect</label>
+                    <input type="range" id="trail-slider" min="0.75" max="0.95" step="0.01" value="0.88" oninput="engine.setTrail(this.value)">
+                    <span id="trail-value" class="text-gray-400 text-[10px] block mt-1">0.88</span>
+                </div>
+                
+                <div class="slider-container">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider mb-2 block">Boom Power</label>
+                    <input type="range" id="boom-slider" min="3" max="15" step="1" value="8" oninput="engine.setBoomPower(this.value)">
+                    <span id="boom-value" class="text-gray-400 text-[10px] block mt-1">8</span>
+                </div>
+
+                <div class="slider-container">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider mb-2 block">Hand Smoothness</label>
+                    <input type="range" id="smooth-slider" min="0.05" max="0.25" step="0.01" value="0.1" oninput="engine.setHandSmooth(this.value)">
+                    <span id="smooth-value" class="text-gray-400 text-[10px] block mt-1">0.1</span>
+                </div>
+
+                <div class="flex items-center justify-between mb-3 toggle-row">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider">Auto Rotate</label>
+                    <div id="rotate-toggle" class="toggle-switch active" onclick="engine.toggleAutoRotate()"></div>
+                </div>
+
+                <div class="flex items-center justify-between mb-3 toggle-row">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider">Rainbow Mode</label>
+                    <div id="rainbow-toggle" class="toggle-switch" onclick="engine.toggleRainbow()"></div>
+                </div>
+
+                <div class="flex items-center justify-between mb-4 toggle-row">
+                    <label class="text-white text-[10px] font-bold uppercase tracking-wider">Show Skeleton</label>
+                    <div id="skeleton-toggle" class="toggle-switch active" onclick="engine.toggleSkeleton()"></div>
+                </div>
+
+                <button onclick="engine.triggerBoom()" class="action-btn boom-btn w-full text-white font-bold text-sm mb-2">
+                    <i data-lucide="zap" class="w-4 h-4"></i>
+                    BOOM! 💥
+                </button>
+
+                <button onclick="engine.trigger360()" class="action-btn w-full text-white font-bold text-sm mb-2" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);">
+                    <i data-lucide="rotate-3d" class="w-4 h-4"></i>
+                    360° Rotate 🔄
+                </button>
+
+                <button onclick="engine.randomShape()" class="action-btn w-full text-white font-bold text-sm mb-2">
+                    <i data-lucide="shuffle" class="w-4 h-4"></i>
+                    Random Shape 🎲
+                </button>
+
+                <button onclick="engine.resetDefaults()" class="action-btn default-btn w-full text-white font-bold text-sm">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    Reset Default ↩️
+                </button>
+
+                <!-- Mobile Actions -->
+                <div class="mobile-actions mt-3">
+                    <button onclick="engine.triggerBoom()" class="action-btn boom-btn flex-1 text-white font-bold text-xs py-3">
+                        💥 BOOM
+                    </button>
+                    <button onclick="engine.trigger360()" class="action-btn flex-1 text-white font-bold text-xs py-3" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);">
+                        🔄 360°
+                    </button>
+                    <button onclick="engine.resetDefaults()" class="action-btn default-btn flex-1 text-white font-bold text-xs py-3">
+                        ↩️ Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Preview Window with Skeleton -->
+        <div class="absolute bottom-20 md:bottom-6 right-4 md:right-6 w-40 h-32 md:w-56 md:h-44 ui-card rounded-2xl md:rounded-3xl overflow-hidden border border-white/10 pointer-events-auto">
+            <video id="camera-video" class="hidden"></video>
+            <canvas id="camera-preview" class="w-full h-full object-cover"></canvas>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div id="boom-indicator" class="px-3 py-1 bg-white text-black text-[10px] md:text-[12px] font-black rounded-full opacity-0 scale-50 transition-all duration-300">BOOM!</div>
+            </div>
+            <div id="gesture-feedback" class="absolute bottom-1 left-2 text-[8px] md:text-[9px] text-white/90 font-bold"></div>
+            <div id="finger-count" class="absolute top-1 right-2 text-[10px] md:text-[12px] text-white font-black"></div>
+        </div>
+
+        <!-- Shape Selector -->
+        <div class="self-center ui-card rounded-full p-1.5 md:p-2 flex gap-0.5 md:gap-1 pointer-events-auto overflow-x-auto max-w-[95vw] mb-2 md:mb-4 shape-tabs">
+            <button onclick="engine.setShape('flower')" id="tab-flower" class="btn-tab active px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="flower-2" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Flower</span>
+            </button>
+            <button onclick="engine.setShape('heart')" id="tab-heart" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="heart" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Heart</span>
+            </button>
+            <button onclick="engine.setShape('star')" id="tab-star" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="star" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Star</span>
+            </button>
+            <button onclick="engine.setShape('infinity')" id="tab-infinity" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="infinity" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Infinity</span>
+            </button>
+            <button onclick="engine.setShape('butterfly')" id="tab-butterfly" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="bug" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Butterfly</span>
+            </button>
+            <button onclick="engine.setShape('spiral')" id="tab-spiral" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="loader" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Spiral</span>
+            </button>
+            <button onclick="engine.setShape('crown')" id="tab-crown" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Crown</span>
+            </button>
+            <button onclick="engine.setShape('diamond')" id="tab-diamond" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="diamond" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Diamond</span>
+            </button>
+            <button onclick="engine.setShape('dna')" id="tab-dna" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="dna" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">DNA</span>
+            </button>
+            <button onclick="engine.setShape('galaxy')" id="tab-galaxy" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="orbit" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Galaxy</span>
+            </button>
+            <button onclick="engine.setShape('wave')" id="tab-wave" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="waves" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Wave</span>
+            </button>
+            <button onclick="engine.setShape('sphere')" id="tab-sphere" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="globe" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Sphere</span>
+            </button>
+            <button onclick="engine.setShape('cube')" id="tab-cube" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="box" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Cube</span>
+            </button>
+            <button onclick="engine.setShape('rings')" id="tab-rings" class="btn-tab px-3 py-1.5 md:px-4 md:py-2 rounded-full text-white flex items-center gap-1 md:gap-2 whitespace-nowrap">
+                <i data-lucide="circle" class="w-3 h-3 md:w-4 md:h-4"></i>
+                <span class="text-[8px] md:text-[10px] font-bold tracking-widest uppercase hidden sm:inline">Rings</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Feedback Indicators -->
+    <div id="hand-indicator" class="hand-indicator"></div>
+    <div id="pinch-indicator" class="pinch-indicator"></div>
+    <div id="canvas-target" class="fixed inset-0"></div>
+
+    <script>
+        lucide.createIcons();
+
+        function toggleHelp() {
+            const modal = document.getElementById('help-modal');
+            modal.classList.toggle('active');
+            lucide.createIcons();
+        }
+
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('collapsed');
+        }
+
+        // Default values
+        const DEFAULTS = {
+            particleSize: 0.4,
+            animSpeed: 0.05,
+            trailFactor: 0.88,
+            boomPower: 8,
+            handSmooth: 0.1,
+            autoRotate: true,
+            rainbowMode: false,
+            showSkeleton: true
+        };
+
+        class ParticleEngine {
+            constructor() {
+                this.count = 20000; 
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                
+                this.targetPos = new Float32Array(this.count * 3);
+                this.currentPos = new Float32Array(this.count * 3);
+                this.velocity = new Float32Array(this.count * 3);
+                this.colors = new Float32Array(this.count * 3);
+                
+                this.currentColor = new THREE.Color('#ff2d55');
+                this.particleSize = DEFAULTS.particleSize;
+                this.animSpeed = DEFAULTS.animSpeed;
+                this.trailFactor = DEFAULTS.trailFactor;
+                this.boomPower = DEFAULTS.boomPower;
+                this.handSmooth = DEFAULTS.handSmooth;
+                this.autoRotate = DEFAULTS.autoRotate;
+                this.rainbowMode = DEFAULTS.rainbowMode;
+                this.showSkeleton = DEFAULTS.showSkeleton;
+                this.rainbowHue = 0;
+                
+                // 360 rotate state
+                this.is360Rotating = false;
+                this.rotation360Progress = 0;
+                
+                // Smoothed hand tracking
+                this.hand = { 
+                    x: 0.5, y: 0.5, 
+                    rawX: 0.5, rawY: 0.5,
+                    smoothX: 0.5, smoothY: 0.5,
+                    historyX: [], historyY: [],
+                    open: 0, 
+                    fingersUp: 0,
+                    detected: false,
+                    lastBoomTime: 0,
+                    last360Time: 0,
+                    landmarks: null
+                };
+                
+                this.currentShape = 'flower';
+                this.shapes = ['flower', 'heart', 'star', 'infinity', 'butterfly', 'spiral', 'crown', 'diamond', 'dna', 'galaxy', 'wave', 'sphere', 'cube', 'rings'];
+                this.boom = 1.0;
+
+                this.init();
+            }
+
+            init() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.getElementById('canvas-target').appendChild(this.renderer.domElement);
+                this.camera.position.z = 50;
+
+                const geo = new THREE.BufferGeometry();
+                const pos = new Float32Array(this.count * 3);
+                
+                for(let i=0; i<this.count; i++) {
+                    const i3 = i * 3;
+                    const r = 80 * Math.random();
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI;
+                    
+                    pos[i3] = r * Math.sin(phi) * Math.cos(theta);
+                    pos[i3+1] = r * Math.sin(phi) * Math.sin(theta);
+                    pos[i3+2] = r * Math.cos(phi);
+                    
+                    this.currentPos[i3] = pos[i3];
+                    this.currentPos[i3+1] = pos[i3+1];
+                    this.currentPos[i3+2] = pos[i3+2];
+                }
+                
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+
+                this.material = new THREE.PointsMaterial({
+                    size: this.particleSize,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.85,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                this.points = new THREE.Points(geo, this.material);
+                this.scene.add(this.points);
+
+                this.generateShape('flower');
+                this.initHands();
+                this.animate();
+
+                document.getElementById('morph-input').addEventListener('input', (e) => {
+                    this.generateText(e.target.value || "TYPE");
+                    this.setShape('text');
+                });
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                // Keyboard shortcuts
+                window.addEventListener('keydown', (e) => {
+                    if(e.target.tagName === 'INPUT') return;
+                    if(e.key === ' ') { e.preventDefault(); this.triggerBoom(); }
+                    if(e.key === 'r' || e.key === 'R') this.randomShape();
+                    if(e.key === 'd' || e.key === 'D') this.resetDefaults();
+                });
+            }
+
+            resetDefaults() {
+                this.particleSize = DEFAULTS.particleSize;
+                this.animSpeed = DEFAULTS.animSpeed;
+                this.trailFactor = DEFAULTS.trailFactor;
+                this.boomPower = DEFAULTS.boomPower;
+                this.handSmooth = DEFAULTS.handSmooth;
+                this.autoRotate = DEFAULTS.autoRotate;
+                this.rainbowMode = DEFAULTS.rainbowMode;
+                this.showSkeleton = DEFAULTS.showSkeleton;
+
+                // Update material
+                this.material.size = this.particleSize;
+
+                // Update UI sliders
+                document.getElementById('size-slider').value = this.particleSize;
+                document.getElementById('size-value').textContent = this.particleSize;
+                document.getElementById('speed-slider').value = this.animSpeed;
+                document.getElementById('speed-value').textContent = this.animSpeed;
+                document.getElementById('trail-slider').value = this.trailFactor;
+                document.getElementById('trail-value').textContent = this.trailFactor;
+                document.getElementById('boom-slider').value = this.boomPower;
+                document.getElementById('boom-value').textContent = this.boomPower;
+                document.getElementById('smooth-slider').value = this.handSmooth;
+                document.getElementById('smooth-value').textContent = this.handSmooth;
+
+                // Update toggles
+                document.getElementById('rotate-toggle').classList.toggle('active', this.autoRotate);
+                document.getElementById('rainbow-toggle').classList.toggle('active', this.rainbowMode);
+                document.getElementById('skeleton-toggle').classList.toggle('active', this.showSkeleton);
+
+                this.showGestureFeedback('↩️ Reset to Default!');
+            }
+
+            setParticleSize(value) {
+                this.particleSize = parseFloat(value);
+                this.material.size = this.particleSize;
+                document.getElementById('size-value').textContent = value;
+            }
+
+            setSpeed(value) {
+                this.animSpeed = parseFloat(value);
+                document.getElementById('speed-value').textContent = value;
+            }
+
+            setTrail(value) {
+                this.trailFactor = parseFloat(value);
+                document.getElementById('trail-value').textContent = value;
+            }
+
+            setBoomPower(value) {
+                this.boomPower = parseFloat(value);
+                document.getElementById('boom-value').textContent = value;
+            }
+
+            setHandSmooth(value) {
+                this.handSmooth = parseFloat(value);
+                document.getElementById('smooth-value').textContent = value;
+            }
+
+            toggleAutoRotate() {
+                this.autoRotate = !this.autoRotate;
+                document.getElementById('rotate-toggle').classList.toggle('active', this.autoRotate);
+            }
+
+            toggleRainbow() {
+                this.rainbowMode = !this.rainbowMode;
+                document.getElementById('rainbow-toggle').classList.toggle('active', this.rainbowMode);
+                document.getElementById('rainbow-btn').classList.toggle('ring-2', this.rainbowMode);
+                document.getElementById('rainbow-btn').classList.toggle('ring-white', this.rainbowMode);
+            }
+
+            toggleSkeleton() {
+                this.showSkeleton = !this.showSkeleton;
+                document.getElementById('skeleton-toggle').classList.toggle('active', this.showSkeleton);
+            }
+
+            randomShape() {
+                const randomIndex = Math.floor(Math.random() * this.shapes.length);
+                this.setShape(this.shapes[randomIndex]);
+                this.showGestureFeedback('🎲 ' + this.shapes[randomIndex].toUpperCase());
+            }
+
+            setShape(name) {
+                this.currentShape = name;
+                document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+                const tab = document.getElementById(`tab-${name}`);
+                if(tab) tab.classList.add('active');
+                if(name !== 'text') this.generateShape(name);
+            }
+
+            changeColor(hex) {
+                this.rainbowMode = false;
+                document.getElementById('rainbow-toggle').classList.remove('active');
+                this.currentColor.set(hex);
+            }
+
+            generateShape(type) {
+                for(let i=0; i<this.count; i++) {
+                    const i3 = i * 3;
+                    let x, y, z;
+                    
+                    if(type === 'flower') {
+                        const t = Math.random() * Math.PI * 2;
+                        const r = 18 * Math.sin(4 * t);
+                        x = Math.cos(t) * r;
+                        y = Math.sin(t) * r;
+                        z = (Math.random() - 0.5) * 6;
+                    } else if(type === 'heart') {
+                        const t = Math.random() * Math.PI * 2;
+                        x = 1.2 * (16 * Math.pow(Math.sin(t), 3));
+                        y = 1.2 * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+                        z = (Math.random() - 0.5) * 5;
+                    } else if(type === 'star') {
+                        const t = Math.random() * Math.PI * 2;
+                        const r = 14 + Math.sin(t * 5) * 7;
+                        x = Math.cos(t) * r;
+                        y = Math.sin(t) * r;
+                        z = (Math.random() - 0.5) * 4;
+                    } else if(type === 'infinity') {
+                        const t = Math.random() * Math.PI * 2;
+                        const scale = 12;
+                        x = scale * Math.cos(t) / (1 + Math.pow(Math.sin(t), 2));
+                        y = scale * Math.sin(t) * Math.cos(t) / (1 + Math.pow(Math.sin(t), 2));
+                        z = (Math.random() - 0.5) * 4;
+                    } else if(type === 'butterfly') {
+                        const t = Math.random() * Math.PI * 12;
+                        const r = Math.exp(Math.cos(t)) - 2 * Math.cos(4*t) + Math.pow(Math.sin(t/12), 5);
+                        x = Math.sin(t) * r * 5;
+                        y = Math.cos(t) * r * 5;
+                        z = (Math.random() - 0.5) * 4;
+                    } else if(type === 'spiral') {
+                        const t = i / this.count * Math.PI * 10;
+                        const r = t * 1.5;
+                        x = Math.cos(t) * r;
+                        y = Math.sin(t) * r;
+                        z = (i / this.count - 0.5) * 30;
+                    } else if(type === 'crown') {
+                        const t = Math.random() * Math.PI * 2;
+                        const baseR = 15;
+                        const peaks = 5;
+                        const r = baseR + Math.abs(Math.sin(t * peaks)) * 8;
+                        x = Math.cos(t) * r;
+                        y = Math.abs(Math.sin(t * peaks)) * 10 - 5;
+                        z = (Math.random() - 0.5) * 4;
+                    } else if(type === 'diamond') {
+                        const t = Math.random() * Math.PI * 2;
+                        const r = 18 / (Math.abs(Math.cos(t)) + Math.abs(Math.sin(t)));
+                        x = Math.cos(t) * r;
+                        y = Math.sin(t) * r;
+                        z = (Math.random() - 0.5) * 4;
+                    } else if(type === 'dna') {
+                        const t = (i / this.count) * Math.PI * 8;
+                        const strand = i % 2;
+                        const offset = strand * Math.PI;
+                        x = Math.cos(t + offset) * 12;
+                        y = (i / this.count - 0.5) * 50;
+                        z = Math.sin(t + offset) * 12;
+                    } else if(type === 'galaxy') {
+                        const arm = Math.floor(Math.random() * 4);
+                        const t = Math.random() * 3;
+                        const angle = arm * (Math.PI / 2) + t;
+                        const r = t * 8 + Math.random() * 3;
+                        x = Math.cos(angle) * r;
+                        y = Math.sin(angle) * r;
+                        z = (Math.random() - 0.5) * 3;
+                    } else if(type === 'wave') {
+                        x = (i / this.count - 0.5) * 60;
+                        y = Math.sin(x * 0.5) * 10;
+                        z = Math.cos(x * 0.3) * 10;
+                    } else if(type === 'cube') {
+                        const face = Math.floor(Math.random() * 6);
+                        const u = Math.random() * 2 - 1;
+                        const v = Math.random() * 2 - 1;
+                        const size = 12;
+                        if(face === 0) { x = size; y = u * size; z = v * size; }
+                        else if(face === 1) { x = -size; y = u * size; z = v * size; }
+                        else if(face === 2) { x = u * size; y = size; z = v * size; }
+                        else if(face === 3) { x = u * size; y = -size; z = v * size; }
+                        else if(face === 4) { x = u * size; y = v * size; z = size; }
+                        else { x = u * size; y = v * size; z = -size; }
+                    } else if(type === 'rings') {
+                        const ringIndex = Math.floor(Math.random() * 3);
+                        const t = Math.random() * Math.PI * 2;
+                        const r = 15;
+                        if(ringIndex === 0) {
+                            x = Math.cos(t) * r;
+                            y = Math.sin(t) * r;
+                            z = 0;
+                        } else if(ringIndex === 1) {
+                            x = Math.cos(t) * r;
+                            y = 0;
+                            z = Math.sin(t) * r;
+                        } else {
+                            x = 0;
+                            y = Math.cos(t) * r;
+                            z = Math.sin(t) * r;
+                        }
+                    } else { // Sphere
+                        const phi = Math.acos(-1 + (2 * i) / this.count);
+                        const theta = Math.sqrt(this.count * Math.PI) * phi;
+                        const r = 20;
+                        x = r * Math.cos(theta) * Math.sin(phi);
+                        y = r * Math.sin(theta) * Math.sin(phi);
+                        z = r * Math.cos(phi);
+                    }
+                    
+                    this.targetPos[i3] = x;
+                    this.targetPos[i3+1] = y;
+                    this.targetPos[i3+2] = z;
+                }
+            }
+
+            generateText(text) {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 1024;
+                canvas.height = 256;
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 150px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text.toUpperCase(), 512, 128);
+                
+                const data = ctx.getImageData(0, 0, 1024, 256).data;
+                const points = [];
+                for(let y=0; y<256; y+=3) {
+                    for(let x=0; x<1024; x+=3) {
+                        if(data[(y * 1024 + x) * 4 + 3] > 128) {
+                            points.push({x: (x - 512) * 0.12, y: (128 - y) * 0.12});
+                        }
+                    }
+                }
+                
+                if(points.length === 0) return;
+                for(let i=0; i<this.count; i++) {
+                    const i3 = i * 3;
+                    const p = points[i % points.length];
+                    this.targetPos[i3] = p.x;
+                    this.targetPos[i3+1] = p.y;
+                    this.targetPos[i3+2] = (Math.random()-0.5) * 3;
+                }
+            }
+
+            triggerBoom() {
+                const now = Date.now();
+                if(now - this.hand.lastBoomTime < 800) return;
+                this.hand.lastBoomTime = now;
+                
+                this.boom = this.boomPower;
+                
+                const flash = document.getElementById('boom-flash');
+                flash.style.opacity = '0.5';
+                setTimeout(() => flash.style.opacity = '0', 80);
+
+                const indicator = document.getElementById('boom-indicator');
+                indicator.style.opacity = '1';
+                indicator.style.transform = 'scale(1.3)';
+                setTimeout(() => {
+                    indicator.style.opacity = '0';
+                    indicator.style.transform = 'scale(0.5)';
+                }, 500);
+
+                for(let i = 0; i < 3; i++) {
+                    setTimeout(() => {
+                        const wave = document.createElement('div');
+                        wave.className = 'boom-wave';
+                        wave.style.left = '50%';
+                        wave.style.top = '50%';
+                        document.body.appendChild(wave);
+                        setTimeout(() => wave.remove(), 800);
+                    }, i * 100);
+                }
+
+                this.showGestureFeedback('💥 BOOM!');
+            }
+
+            trigger360() {
+                const now = Date.now();
+                if(now - this.hand.last360Time < 2000) return;
+                this.hand.last360Time = now;
+                
+                this.is360Rotating = true;
+                this.rotation360Progress = 0;
+                this.showGestureFeedback('🔄 360° ROTATE!');
+            }
+
+            showGestureFeedback(text) {
+                const el = document.getElementById('gesture-visual');
+                const textEl = document.getElementById('gesture-text');
+                textEl.textContent = text;
+                el.classList.add('show');
+                setTimeout(() => el.classList.remove('show'), 1200);
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                
+                // Smooth boom decay
+                if(this.boom > 1.0) {
+                    this.boom += (1.0 - this.boom) * 0.06;
+                    if(this.boom < 1.01) this.boom = 1.0;
+                }
+
+                // 360 rotation animation
+                if(this.is360Rotating) {
+                    this.rotation360Progress += 0.03;
+                    if(this.rotation360Progress >= 1) {
+                        this.is360Rotating = false;
+                        this.rotation360Progress = 0;
+                    }
+                }
+
+                // Ultra smooth hand interpolation
+                this.hand.x += (this.hand.smoothX - this.hand.x) * this.handSmooth;
+                this.hand.y += (this.hand.smoothY - this.hand.y) * this.handSmooth;
+
+                const positions = this.points.geometry.attributes.position.array;
+                const colors = this.points.geometry.attributes.color.array;
+
+                // Scale based on hand openness
+                const scaleEffect = this.hand.detected ? 0.8 + (this.hand.open * 1.4) : 1.0;
+                
+                // Rotation targets based on hand position
+                let targetRotY = (this.hand.x - 0.5) * 1.2;
+                let targetRotX = (this.hand.y - 0.5) * 1.2;
+
+                // Rainbow mode color cycling
+                if(this.rainbowMode) {
+                    this.rainbowHue += 0.004;
+                    if(this.rainbowHue > 1) this.rainbowHue = 0;
+                    this.currentColor.setHSL(this.rainbowHue, 1, 0.5);
+                }
+
+                for(let i=0; i<this.count; i++) {
+                    const i3 = i * 3;
+                    
+                    const tx = this.targetPos[i3] * scaleEffect * this.boom;
+                    const ty = this.targetPos[i3+1] * scaleEffect * this.boom;
+                    const tz = this.targetPos[i3+2] * scaleEffect * this.boom;
+
+                    // Spring physics
+                    this.velocity[i3] += (tx - this.currentPos[i3]) * this.animSpeed;
+                    this.velocity[i3+1] += (ty - this.currentPos[i3+1]) * this.animSpeed;
+                    this.velocity[i3+2] += (tz - this.currentPos[i3+2]) * this.animSpeed;
+
+                    this.velocity[i3] *= this.trailFactor;
+                    this.velocity[i3+1] *= this.trailFactor;
+                    this.velocity[i3+2] *= this.trailFactor;
+
+                    this.currentPos[i3] += this.velocity[i3];
+                    this.currentPos[i3+1] += this.velocity[i3+1];
+                    this.currentPos[i3+2] += this.velocity[i3+2];
+
+                    positions[i3] = this.currentPos[i3];
+                    positions[i3+1] = this.currentPos[i3+1];
+                    positions[i3+2] = this.currentPos[i3+2];
+
+                    // Color transition
+                    colors[i3] += (this.currentColor.r - colors[i3]) * 0.06;
+                    colors[i3+1] += (this.currentColor.g - colors[i3+1]) * 0.06;
+                    colors[i3+2] += (this.currentColor.b - colors[i3+2]) * 0.06;
+                }
+
+                this.points.geometry.attributes.position.needsUpdate = true;
+                this.points.geometry.attributes.color.needsUpdate = true;
+
+                // Smooth rotation
+                this.points.rotation.y += (targetRotY - this.points.rotation.y) * 0.06;
+                this.points.rotation.x += (targetRotX - this.points.rotation.x) * 0.06;
+                
+                if(this.autoRotate) {
+                    this.points.rotation.y += 0.002;
+                }
+
+                // 360 rotation override
+                if(this.is360Rotating) {
+                    this.points.rotation.y += Math.PI * 2 * 0.03;
+                }
+                
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            // Count fingers up
+            countFingersUp(lm) {
+                let count = 0;
+                
+                // Thumb - check if tip is to the left of IP joint (for right hand)
+                const thumbUp = lm[4].x < lm[3].x;
+                if(thumbUp) count++;
+                
+                // Index finger
+                if(lm[8].y < lm[6].y) count++;
+                
+                // Middle finger
+                if(lm[12].y < lm[10].y) count++;
+                
+                // Ring finger
+                if(lm[16].y < lm[14].y) count++;
+                
+                // Pinky
+                if(lm[20].y < lm[18].y) count++;
+                
+                return count;
+            }
+
+            // Check specific gestures
+            checkGestures(lm) {
+                const indexUp = lm[8].y < lm[6].y;
+                const middleUp = lm[12].y < lm[10].y;
+                const ringUp = lm[16].y < lm[14].y;
+                const pinkyUp = lm[20].y < lm[18].y;
+                const thumbOut = Math.abs(lm[4].x - lm[3].x) > 0.03;
+                
+                // ✌️ Peace/Victory = BOOM (index + middle up, others down)
+                const isPeace = indexUp && middleUp && !ringUp && !pinkyUp;
+                
+                // 🤟 Three fingers = 360 rotate (index + middle + ring up)
+                const isThree = indexUp && middleUp && ringUp && !pinkyUp;
+                
+                // 👆 One finger = pointer mode
+                const isPointer = indexUp && !middleUp && !ringUp && !pinkyUp;
+                
+                return { isPeace, isThree, isPointer };
+            }
+
+            drawHandSkeleton(ctx, lm, w, h) {
+                if(!this.showSkeleton) return;
+                
+                // Finger connections
+                const fingers = [
+                    [0, 1, 2, 3, 4],      // Thumb
+                    [0, 5, 6, 7, 8],      // Index
+                    [0, 9, 10, 11, 12],   // Middle
+                    [0, 13, 14, 15, 16],  // Ring
+                    [0, 17, 18, 19, 20]   // Pinky
+                ];
+                
+                const colors = [
+                    '#22c55e', // Thumb - Green
+                    '#ef4444', // Index - Red
+                    '#f59e0b', // Middle - Orange
+                    '#3b82f6', // Ring - Blue
+                    '#a855f7'  // Pinky - Purple
+                ];
+
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                // Draw connections
+                fingers.forEach((finger, fi) => {
+                    ctx.strokeStyle = colors[fi];
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    
+                    for(let i = 0; i < finger.length; i++) {
+                        const idx = finger[i];
+                        const x = (1 - lm[idx].x) * w;
+                        const y = lm[idx].y * h;
+                        
+                        if(i === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.stroke();
+                });
+
+                // Palm connections
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                const palmPoints = [5, 9, 13, 17, 0, 5];
+                palmPoints.forEach((idx, i) => {
+                    const x = (1 - lm[idx].x) * w;
+                    const y = lm[idx].y * h;
+                    if(i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                // Draw joints
+                for(let i = 0; i < 21; i++) {
+                    const x = (1 - lm[i].x) * w;
+                    const y = lm[i].y * h;
+                    
+                    // Determine color based on finger
+                    let color = '#ffffff';
+                    if(i >= 1 && i <= 4) color = colors[0];
+                    else if(i >= 5 && i <= 8) color = colors[1];
+                    else if(i >= 9 && i <= 12) color = colors[2];
+                    else if(i >= 13 && i <= 16) color = colors[3];
+                    else if(i >= 17 && i <= 20) color = colors[4];
+                    
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(x, y, i % 4 === 0 ? 5 : 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // White border for visibility
+                    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            }
+
+            initHands() {
+                const video = document.getElementById('camera-video');
+                const canvas = document.getElementById('camera-preview');
+                const ctx = canvas.getContext('2d');
+                const handIndicator = document.getElementById('hand-indicator');
+                const pinchIndicator = document.getElementById('pinch-indicator');
+                const gestureFeedback = document.getElementById('gesture-feedback');
+                const fingerCount = document.getElementById('finger-count');
+
+                const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+                hands.setOptions({ 
+                    maxNumHands: 1, 
+                    modelComplexity: 1, 
+                    minDetectionConfidence: 0.7, 
+                    minTrackingConfidence: 0.7 
+                });
+
+                hands.onResults((res) => {
+                    // Set canvas size
+                    canvas.width = canvas.offsetWidth;
+                    canvas.height = canvas.offsetHeight;
+                    
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Draw mirrored video
+                    if(res.image) {
+                        ctx.save();
+                        ctx.scale(-1, 1);
+                        ctx.translate(-canvas.width, 0);
+                        ctx.globalAlpha = 0.6;
+                        ctx.drawImage(res.image, 0, 0, canvas.width, canvas.height);
+                        ctx.globalAlpha = 1;
+                        ctx.restore();
+                    }
+                    
+                    if(res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+                        const lm = res.multiHandLandmarks[0];
+                        this.hand.detected = true;
+                        this.hand.landmarks = lm;
+                        
+                        // Draw skeleton on canvas
+                        this.drawHandSkeleton(ctx, lm, canvas.width, canvas.height);
+                        
+                        // Get raw position
+                        this.hand.rawX = lm[9].x;
+                        this.hand.rawY = lm[9].y;
+
+                        // Moving average for smooth tracking
+                        this.hand.historyX.push(this.hand.rawX);
+                        this.hand.historyY.push(this.hand.rawY);
+                        if(this.hand.historyX.length > 8) {
+                            this.hand.historyX.shift();
+                            this.hand.historyY.shift();
+                        }
+                        
+                        this.hand.smoothX = this.hand.historyX.reduce((a, b) => a + b, 0) / this.hand.historyX.length;
+                        this.hand.smoothY = this.hand.historyY.reduce((a, b) => a + b, 0) / this.hand.historyY.length;
+                        
+                        // Hand openness
+                        const handScale = Math.hypot(lm[12].x - lm[0].x, lm[12].y - lm[0].y);
+                        this.hand.open = Math.max(0, Math.min(1, (handScale - 0.12) * 4));
+
+                        // Count fingers
+                        const fingers = this.countFingersUp(lm);
+                        this.hand.fingersUp = fingers;
+                        fingerCount.textContent = `${fingers} 👆`;
+
+                        // Check gestures
+                        const gestures = this.checkGestures(lm);
+                        
+                        // ✌️ Peace = BOOM
+                        if(gestures.isPeace) {
+                            this.triggerBoom();
+                            gestureFeedback.textContent = '✌️ PEACE = BOOM!';
+                            gestureFeedback.style.color = '#ff2d55';
+                        } 
+                        // 🤟 Three fingers = 360 rotate
+                        else if(gestures.isThree) {
+                            this.trigger360();
+                            gestureFeedback.textContent = '🤟 THREE = 360°';
+                            gestureFeedback.style.color = '#8b5cf6';
+                        }
+                        // 👆 Pointer
+                        else if(gestures.isPointer) {
+                            gestureFeedback.textContent = '👆 POINTER';
+                            gestureFeedback.style.color = '#3b82f6';
+                        }
+                        // Open hand
+                        else if(this.hand.open > 0.7) {
+                            gestureFeedback.textContent = '🖐️ OPEN';
+                            gestureFeedback.style.color = '#22c55e';
+                        }
+                        // Fist
+                        else if(this.hand.open < 0.3) {
+                            gestureFeedback.textContent = '✊ FIST';
+                            gestureFeedback.style.color = '#f59e0b';
+                        }
+                        else {
+                            gestureFeedback.textContent = '✋ TRACKING';
+                            gestureFeedback.style.color = '#ffffff';
+                        }
+
+                        // Visual UI Hand Tracker
+                        const screenX = (1 - this.hand.x) * window.innerWidth;
+                        const screenY = this.hand.y * window.innerHeight;
+                        
+                        handIndicator.classList.add('active');
+                        handIndicator.style.transform = `translate(${screenX - 25}px, ${screenY - 25}px) scale(${0.8 + this.hand.open * 0.4})`;
+                        
+                        if(gestures.isPeace) {
+                            handIndicator.style.borderColor = '#ff2d55';
+                            pinchIndicator.style.opacity = '1';
+                            const px = (1 - lm[8].x) * window.innerWidth;
+                            const py = lm[8].y * window.innerHeight;
+                            pinchIndicator.style.transform = `translate(${px-10}px, ${py-10}px)`;
+                        } else if(gestures.isThree) {
+                            handIndicator.style.borderColor = '#8b5cf6';
+                            pinchIndicator.style.opacity = '0';
+                        } else {
+                            handIndicator.style.borderColor = 'rgba(255,255,255,0.6)';
+                            pinchIndicator.style.opacity = '0';
+                        }
+
+                        document.getElementById('status-light').style.background = '#22c55e';
+                        document.getElementById('status-light').style.boxShadow = '0 0 15px #22c55e';
+                        document.getElementById('hint-text').innerText = "Tracking Active ✓";
+                    } else {
+                        this.hand.detected = false;
+                        this.hand.historyX = [];
+                        this.hand.historyY = [];
+                        this.hand.landmarks = null;
+                        handIndicator.classList.remove('active');
+                        pinchIndicator.style.opacity = '0';
+                        gestureFeedback.textContent = '';
+                        fingerCount.textContent = '';
+                        document.getElementById('status-light').style.background = '#ef4444';
+                        document.getElementById('status-light').style.boxShadow = '0 0 15px #ef4444';
+                        document.getElementById('hint-text').innerText = "Haath dikhao camera ko...";
+                    }
+                });
+
+                const camera = new Camera(video, {
+                    onFrame: async () => await hands.send({image: video}),
+                    width: 640, height: 480
+                });
+                camera.start();
+            }
+        }
+
+        window.onload = () => {
+            window.engine = new ParticleEngine();
+            if(window.innerWidth < 768) {
+                document.getElementById('settings-panel').classList.add('collapsed');
+            }
+        };
+    </script>
+</body>
+</html>
